@@ -11,6 +11,11 @@ dependencies = [
     "flask-restx",
     "requests",
     "psycopg[binary]",
+    "duckdb",
+    "snowflake-connector-python[pandas]",
+    "pandas",
+    "numpy",
+    "scikit-learn",
 ]
 readme = "README.md"
 
