@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import Any, Optional
-import pandas
+from typing import Any, Iterator, Optional
+import polars
 
 class DataConnector(ABC):
     """
@@ -30,7 +30,7 @@ class DataConnector(ABC):
         ...
     
     @abstractmethod
-    def sample(self, n: int, seed: Optional[int] = None) -> pandas.DataFrame:
+    def sample(self, n: int, seed: Optional[int] = None) -> Iterator[polars.DataFrame]:
         """
         Randomly sample n rows from the data source.
         """

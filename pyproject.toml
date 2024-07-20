@@ -13,9 +13,9 @@ dependencies = [
     "psycopg[binary]",
     "duckdb",
     "snowflake-connector-python[pandas]",
-    "pandas",
     "numpy",
     "scikit-learn",
+    "polars",
 ]
 readme = "README.md"
 

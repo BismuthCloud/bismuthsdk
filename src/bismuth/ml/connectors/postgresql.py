@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Iterator, Optional
+import polars
 import psycopg
-import pandas
 
 from .base import DataConnector
 
@@ -33,10 +33,14 @@ class PostgresConnector(DataConnector):
             cur.execute(f"SELECT COUNT(DISTINCT {column}) FROM {self.table}")
             return cur.fetchone()[0]
     
-    def sample(self, n: int, seed: Optional[int] = None) -> pandas.DataFrame:
+    def sample(self, n: int, seed: Optional[int] = None) -> Iterator[polars.DataFrame]:
         with self.conn.cursor() as cur:
             if seed is not None:
                 seed = (seed % 2**32) / 2**32
                 cur.execute(f"SELECT setseed({seed})")
             cur.execute(f"SELECT * FROM {self.table} ORDER BY RANDOM() LIMIT {n}")
-            return pandas.DataFrame(cur.fetchall(), columns=self.columns)
+            while True:
+                batch = cur.fetchmany(10000)
+                if not batch:
+                    break
+                yield polars.DataFrame(batch, schema=self.columns)

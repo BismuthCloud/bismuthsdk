@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Iterator, Optional
 import snowflake.connector
-import pandas
+import polars
 
 from .base import DataConnector
 
@@ -28,8 +28,9 @@ class SnowflakeConnector(DataConnector):
             cur.execute(f"SELECT APPROX_COUNT_DISTINCT({column}) FROM {self.table}")
             return cur.fetchone()[0]
     
-    def sample(self, n: int, seed: Optional[int] = None) -> pandas.DataFrame:
+    def sample(self, n: int, seed: Optional[int] = None) -> Iterator[polars.DataFrame]:
         seed = str(seed) if seed is not None else ""
         with self.conn.cursor() as cur:
             cur.execute(f"SELECT * FROM {self.table} ORDER BY RANDOM({seed}) LIMIT {n}")
-            return cur.fetch_pandas_all()
+            for df in cur.fetch_pandas_batches():
+                yield polars.from_pandas(df)

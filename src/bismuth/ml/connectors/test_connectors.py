@@ -52,6 +52,6 @@ def test_cardinality(connector):
     assert connector.approx_cardinality("variety") == 3
 
 def test_sample(connector):
-    sample1 = connector.sample(3, seed=42)
-    sample2 = connector.sample(3, seed=42)
+    sample1 = next(connector.sample(3, seed=42))
+    sample2 = next(connector.sample(3, seed=42))
     assert sample1.equals(sample2), "sample should be deterministic with the same seed"

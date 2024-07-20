@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Iterator, Optional
 import duckdb
-import pandas
+import polars
 
 from .base import DataConnector
 
@@ -29,9 +29,9 @@ class FileConnector(DataConnector):
     def approx_cardinality(self, column: str) -> int:
         return len(self.data[column].distinct())
     
-    def sample(self, n: int, seed: Optional[int] = None) -> pandas.DataFrame:
+    def sample(self, n: int, seed: Optional[int] = None) -> Iterator[polars.DataFrame]:
         if seed is not None:
             seed = (seed % 2**32) / 2**32
             self.data.query("tbl", f"SELECT setseed({seed})").fetchall()
-            return self.data.query("tbl", f"SELECT * FROM tbl ORDER BY RANDOM() LIMIT {n}").df()
-        return self.data.query("tbl", f"SELECT * FROM tbl ORDER BY RANDOM() LIMIT {n}").df()
+            return iter([self.data.query("tbl", f"SELECT * FROM tbl ORDER BY RANDOM() LIMIT {n}").pl()])
+        return iter([self.data.query("tbl", f"SELECT * FROM tbl ORDER BY RANDOM() LIMIT {n}").pl()])
