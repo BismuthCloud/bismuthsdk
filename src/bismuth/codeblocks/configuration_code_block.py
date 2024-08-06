@@ -4,6 +4,8 @@ from flask import request
 from http import HTTPStatus
 from typing import Optional
 from urllib.parse import urljoin
+from pathlib import Path
+import json
 
 from .base_code_block import BaseCodeBlock
 
@@ -20,11 +22,20 @@ class ConfigurationCodeBlock(BaseCodeBlock):
         """
         Initialize the configuration store.
         """
-        if 'BISMUTH_AUTH' not in os.environ:
-            print("Missing BISMUTH_AUTH token in environment. Configuration will not be available.")
+
+        self.config = None
+
+        if "BISMUTH_AUTH" in os.environ:
+            self.auth = {"Authorization": "Bearer " + os.environ["BISMUTH_AUTH"]}
+            self.api_url = api_url
+        elif Path("./.env").exists():
+            with open("./.env", "r") as f:
+                self.config = json.loads(f.read())
+        else:
+            print(
+                "Missing BISMUTH_AUTH token in environment and no '.env' file detected. Configuration will not be available"
+            )
             return
-        self.auth = {"Authorization": "Bearer " + os.environ['BISMUTH_AUTH']}
-        self.api_url = api_url
 
     def _headers(self):
         hdrs = self.auth.copy()
@@ -36,15 +47,20 @@ class ConfigurationCodeBlock(BaseCodeBlock):
             pass
         return hdrs
 
-    def get(self, key) -> Optional[str]:
+    def get(self, key, default=None) -> Optional[str]:
         """
         Get a config value. Raises an exception if the key does not exist in the managed configuration store.
         """
-        if 'BISMUTH_AUTH' not in os.environ:
-            raise Exception("Missing BISMUTH_AUTH token in environment.")
-        resp = requests.get(urljoin(self.api_url, key), headers=self._headers())
-        if resp.status_code == HTTPStatus.NOT_FOUND:
-            raise AttributeError(f"Configuration key {key} not set")
-        elif not resp.ok:
-            raise Exception(f"Server error {resp}")
-        return resp.text
+        if "BISMUTH_AUTH" in os.environ:
+            resp = requests.get(urljoin(self.api_url, key), headers=self._headers())
+            if resp.status_code == HTTPStatus.NOT_FOUND:
+                return default
+            elif not resp.ok:
+                raise Exception(f"Server error {resp}")
+            return resp.text
+        elif self.config != None:
+            return self.config.get(key, default)
+        else:
+            raise Exception(
+                "Both BISMUTH_AUTH token and .env file not found in environment."
+            )
