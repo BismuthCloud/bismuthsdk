@@ -24,6 +24,8 @@ classifiers = [
 ]
 dependencies = [
   "httpx",
+  "pydantic",
+  "GitPython",
 ]
 
 [project.urls]
