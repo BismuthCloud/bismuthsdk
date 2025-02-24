@@ -2,7 +2,7 @@ import logging
 import os
 import pathlib
 import subprocess
-from bismuthsdk import BismuthClient
+from bismuthsdk import BismuthClient, Location
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -19,5 +19,11 @@ if __name__ == "__main__":
 
     api = BismuthClient(api_key=os.environ["BISMUTH_API_KEY"])
     project = api.load_project(example_dir)
-    diff = project.get_branch("main").generate("change test.py to say goodbye world")
+    branch = project.get_branch("main")
+    diff = branch.generate(
+        "change test.py to say goodbye world",
+    )
     print(diff)
+
+    commit_msg = branch.summarize_changes(diff)
+    print(commit_msg)

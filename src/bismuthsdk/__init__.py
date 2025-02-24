@@ -325,11 +325,11 @@ class Location(BaseModel):
 
     file: str
     # 1-indexed line number in the file
-    start_line: int
+    line: int
 
     @staticmethod
     def from_search_result(result: V1SearchResult) -> "Location":
-        return Location(file=result.file, start_line=result.start_line)
+        return Location(file=result.file, line=result.start_line)
 
 
 class Branch(APIModel):
@@ -360,13 +360,11 @@ class Branch(APIModel):
         message: str,
         local_changes: dict[str, str] = {},
         start_locations: Optional[list[Location]] = None,
-        context: Optional[str] = None,
         session: Optional[str] = None,
     ) -> str:
         """
         Run the Bismuth agent on the given message, applying local_changes (file path -> content) to the repo before processing,
-        and seeding the agent with the given start locations. The passed context is a string that will be passed to the agent,
-        which can be used to provide general project information, style guidelines, etc.
+        and seeding the agent with the given start locations.
 
         If start_locations is not provided, the agent will attempt to find relevant locations in the codebase.
         If session is provided, the agent will create or continue from the previous session with the same name.
@@ -379,8 +377,11 @@ class Branch(APIModel):
                 json={
                     "message": message,
                     "local_changes": local_changes,
-                    "start_locations": start_locations,
-                    "context": context,
+                    "start_locations": (
+                        [l.model_dump() for l in start_locations]
+                        if start_locations
+                        else None
+                    ),
                     "session": session,
                 },
                 timeout=None,
@@ -400,6 +401,15 @@ class Branch(APIModel):
         Summarize the changes in the given unified diff in a format suitable for a commit message.
         """
         # TODO: take example messages for style?
-        return ""
+        async with self._api.client() as client:
+            r = await client.post(
+                f"{self._api_prefix()}/summarize",
+                json={
+                    "diff": diff,
+                },
+                timeout=None,
+            )
+            r.raise_for_status()
+            return r.json()["message"]
 
     summarize_changes = sync_method(summarize_changes_async)
