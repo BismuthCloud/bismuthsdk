@@ -10,6 +10,7 @@ import os
 import httpx
 import tempfile
 import urllib.parse
+import subprocess
 
 
 def sync_method(async_method):
@@ -369,7 +370,7 @@ class Branch(APIModel):
         If start_locations is not provided, the agent will attempt to find relevant locations in the codebase.
         If session is provided, the agent will create or continue from the previous session with the same name.
 
-        Returns a unified diff that can be applied to the repo.
+        Returns a unified diff that can be applied to the repo with apply_diff()
         """
         async with self._api.client() as client:
             r = await client.post(
@@ -413,3 +414,26 @@ class Branch(APIModel):
             return r.json()["message"]
 
     summarize_changes = sync_method(summarize_changes_async)
+
+
+def apply_diff(repo: Path, diff: str) -> bool:
+    """
+    Apply a diff returned by generate() to the repo.
+    Returns True if the patch was applied successfully, False otherwise.
+    """
+    try:
+        process = subprocess.Popen(
+            ["patch", "-p0"],
+            cwd=repo,
+            stdin=subprocess.PIPE,
+            text=True
+        )
+
+        process.communicate(input=diff)
+
+        if process.returncode != 0:
+            return False
+
+        return True
+    except subprocess.SubprocessError:
+        return False
