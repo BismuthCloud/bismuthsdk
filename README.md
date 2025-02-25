@@ -18,4 +18,6 @@ pip install bismuthsdk
 
 ## Usage
 
-See the [examples directory](./examples).
+Log in to the Bismuth web UI and create an API key [here](https://app.bismuth.cloud/settings/apikeys).
+
+Then see the [examples directory](./examples) for usage of this SDK.
