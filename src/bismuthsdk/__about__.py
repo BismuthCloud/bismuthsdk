@@ -1,1 +1,2 @@
-__version__ = "0.0.1"
+# replaced by publish workflow
+__version__ = "0.3.0"

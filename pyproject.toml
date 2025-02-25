@@ -23,9 +23,9 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-  "httpx",
-  "pydantic",
-  "GitPython",
+  "httpx==0.28.1",
+  "pydantic==2.10.6",
+  "GitPython==3.1.44",
 ]
 
 [project.urls]
