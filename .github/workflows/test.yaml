@@ -8,6 +8,9 @@ on:
 jobs:
   mypy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,7 +23,7 @@ jobs:
       - name: Install hatch
         run: |
           pip install hatch
-          
+
       - name: Run mypy
         run: |
           hatch run types:check

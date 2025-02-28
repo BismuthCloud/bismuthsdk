@@ -13,14 +13,13 @@ if __name__ == "__main__":
     if not example_dir.exists():
         example_dir.mkdir()
         subprocess.run(["git", "init"], cwd=example_dir)
-        (example_dir / "test.py").write_text("print('Hello, world!')")
+        (example_dir / "test.py").write_text("print('Hello, world!')\n")
         subprocess.run(["git", "add", "."], cwd=example_dir)
         subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=example_dir)
 
     api = BismuthClient(api_key=os.environ["BISMUTH_API_KEY"])
     project = api.load_project(example_dir)
     branch = project.get_branch("main")
-
 
     """
     Run the Bismuth agent on the given message, applying local_changes (file path -> content) to the repo before processing,

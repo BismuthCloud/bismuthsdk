@@ -37,25 +37,57 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Update Python version
         run: |
-          echo "__version__ = \"${{ needs.validate-version.outputs.version }}\"" > src/bismuthsdk/__about__.py
+          echo "__version__ = \"${{ needs.validate-version.outputs.version }}\"" > python/src/bismuthsdk/__about__.py
 
       - name: Install deps
         run: pip install hatch
 
       - name: Build Wheel
-        run: hatch build
+        run: cd python && hatch build
 
       - name: Upload Wheel
         uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          path: dist/*
+          path: python/dist/*
 
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist
+          packages-dir: python/dist
+
+  publish-node:
+    needs: [validate-version]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: node/bismuthsdk
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update Node.js version
+        run: |
+          npm version ${{ needs.validate-version.outputs.version }} --no-git-tag-version
+          cat package.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish

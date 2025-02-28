@@ -423,10 +423,7 @@ def apply_diff(repo: Path, diff: str) -> bool:
     """
     try:
         process = subprocess.Popen(
-            ["patch", "-p0"],
-            cwd=repo,
-            stdin=subprocess.PIPE,
-            text=True
+            ["patch", "-p0"], cwd=repo, stdin=subprocess.PIPE, text=True
         )
 
         process.communicate(input=diff)
