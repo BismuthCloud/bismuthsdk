@@ -333,6 +333,19 @@ class Location(BaseModel):
         return Location(file=result.file, line=result.start_line)
 
 
+class V1ReviewBug(BaseModel):
+    description: str
+    file: str
+    start_line: int
+    end_line: int
+    suggested_fix: str
+
+
+class V1ReviewResult(BaseModel):
+    message: str
+    bugs: list[V1ReviewBug]
+
+
 class Branch(APIModel):
     _api: BismuthClient
     id: int
@@ -414,6 +427,28 @@ class Branch(APIModel):
             return r.json()["message"]
 
     summarize_changes = sync_method(summarize_changes_async)
+
+    async def review_changes_async(
+        self, message: str, changed_files: dict[str, str]
+    ) -> V1ReviewResult:
+        """
+        Review changes in the given files (compared to HEAD) for bugs.
+        message is a commit message or similar "intent" of the changes.
+        changed_files is a dict of file paths to their new content.
+        """
+        async with self._api.client() as client:
+            r = await client.post(
+                f"{self._api_prefix()}/review",
+                json={
+                    "message": message,
+                    "changes": changed_files,
+                },
+                timeout=None,
+            )
+            r.raise_for_status()
+            return V1ReviewResult.model_validate(r.json())
+
+    review_changes = sync_method(review_changes_async)
 
 
 def apply_diff(repo: Path, diff: str) -> bool:
