@@ -16,7 +16,7 @@ if __name__ == "__main__":
     branch = project.get_branch("main")
     res = branch.scan(max_subsystems=1)
 
-    print("Scanned subsystems:", ",".join(sub.name for sub in res.subsystems))
+    print("Scanned subsystems:", ",".join(sub.name for sub in res.scanned_subsystems))
     print("Changesets:")
     for cs in res.changesets:
         print(cs.title)
