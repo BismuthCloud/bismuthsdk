@@ -334,16 +334,69 @@ class Location(BaseModel):
 
 
 class V1ReviewBug(BaseModel):
+    """
+    A bug found in a code review, with a suggested fix.
+    """
+
+    # A description of the bug
     description: str
+    # The file the bug was found in
     file: str
+    # The starting line number (1-indexed, inclusive)
     start_line: int
+    # The ending line number (1-indexed, exclusive)
     end_line: int
+    # A suggested fix for the bug (fully replacing the lines)
     suggested_fix: str
 
 
 class V1ReviewResult(BaseModel):
+    # A summary message of the code review
     message: str
+    # The list of bugs found in the code review
     bugs: list[V1ReviewBug]
+
+
+class V1ScanCommit(BaseModel):
+    """
+    A single commit in a proposed changeset.
+    """
+
+    # The commit message
+    message: str
+    # The `git diff` of the commit
+    diff: str
+
+
+class V1ScanChangeset(BaseModel):
+    """
+    A proposed changeset to the codebase to fix a single discovered issue.
+    """
+
+    # The title of the changeset
+    title: str
+    # A description of the changeset
+    body: str
+    # The commits in the changeset
+    commits: list[V1ScanCommit]
+
+
+class V1ScanSubsystem(BaseModel):
+    """
+    A subsystem of the codebase that was scanned.
+    """
+
+    # A name for the subsystem
+    name: str
+    # The files in the subsystem
+    files: list[str]
+
+
+class V1ScanResult(BaseModel):
+    # The list of subsystems that were scanned
+    scanned_subsystems: list[V1ScanSubsystem]
+    # The list of changesets that were proposed
+    changesets: list[V1ScanChangeset]
 
 
 class Branch(APIModel):
@@ -449,6 +502,24 @@ class Branch(APIModel):
             return V1ReviewResult.model_validate(r.json())
 
     review_changes = sync_method(review_changes_async)
+
+    async def scan_async(self, max_subsystems: int = 5) -> V1ScanResult:
+        """
+        Scan the project for bugs, covering at most max_subsystems subsystems.
+        Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
+        """
+        async with self._api.client() as client:
+            r = await client.post(
+                f"{self._api_prefix()}/scan",
+                json={
+                    "max_subsystems": max_subsystems,
+                },
+                timeout=None,
+            )
+            r.raise_for_status()
+            return V1ScanResult.model_validate(r.json())
+
+    scan = sync_method(scan_async)
 
 
 def apply_diff(repo: Path, diff: str) -> bool:
