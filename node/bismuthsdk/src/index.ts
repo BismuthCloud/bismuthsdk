@@ -61,6 +61,19 @@ export interface V1SearchResult {
   endLine: number | null;
 }
 
+export interface V1ReviewBug {
+  description: string;
+  file: string;
+  start_line: number;
+  end_line: number;
+  suggested_fix: string;
+}
+
+export interface V1ReviewResult {
+  message: string;
+  bugs: V1ReviewBug[];
+}
+
 /**
  * A location in a file
  */
@@ -180,6 +193,29 @@ export class Branch extends APIModel {
     );
 
     return response.data.message;
+  }
+
+  /**
+   * Review changes in the given files (compared to HEAD) for bugs.
+   * message is a commit message or similar "intent" of the changes.
+   * changed_files is a dict of file paths to their new content.
+   */
+  async reviewChanges(
+    message: string,
+    changedFiles: Record<string, string>
+  ): Promise<V1ReviewResult> {
+    const response = await this.api.client.post(
+      `${this.apiPrefix()}/review`,
+      {
+        message,
+        changes: changedFiles,
+      },
+      {
+        timeout: 0,
+      }
+    );
+
+    return response.data;
   }
 }
 
