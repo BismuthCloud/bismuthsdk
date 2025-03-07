@@ -287,6 +287,13 @@ export class Project extends APIModel {
   }
 
   /**
+   * Delete the project
+   */
+  async delete(): Promise<void> {
+    await this.api.client.delete(this.apiPrefix());
+  }
+
+  /**
    * Get a branch by name
    */
   getBranch(branchName: string): Branch {

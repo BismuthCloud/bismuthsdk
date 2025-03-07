@@ -302,6 +302,16 @@ class Project(APIModel):
                 return b
         raise ValueError("No such branch")
 
+    async def delete_async(self):
+        """
+        Delete the project.
+        """
+        async with self._api.client() as client:
+            r = await client.delete(self._api_prefix())
+            r.raise_for_status()
+
+    delete = sync_method(delete_async)
+
 
 class V1SearchResult(BaseModel):
     """
