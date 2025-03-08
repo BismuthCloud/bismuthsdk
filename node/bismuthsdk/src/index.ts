@@ -422,7 +422,7 @@ export class BismuthClient {
         `${organization.apiPrefix()}/projects/list`
       );
 
-      for (const project of response.data) {
+      for (const project of response.data.projects) {
         if (project.name === nameOrId) {
           return new Project(project, this);
         }

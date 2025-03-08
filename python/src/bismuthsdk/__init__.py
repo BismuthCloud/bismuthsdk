@@ -151,9 +151,10 @@ class BismuthClient:
                 r = await client.get(f"{organization._api_prefix()}/projects/list")
                 r.raise_for_status()
                 self._logger.debug("Matching project by name")
-                for p in map(Project.model_validate, r.json()):
+                for p in map(Project.model_validate, r.json()['projects']):
                     if p.name == name_or_id:
                         p._api = self
+                        await p._refresh()
                         return p
                 raise ValueError("No such project")
             elif isinstance(name_or_id, int):
