@@ -2,7 +2,7 @@ from functools import wraps
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from pydantic.alias_generators import to_camel
-from typing import Union, Optional
+from typing import Any, Union, Optional
 import asyncio
 import git
 import logging
@@ -151,7 +151,7 @@ class BismuthClient:
                 r = await client.get(f"{organization._api_prefix()}/projects/list")
                 r.raise_for_status()
                 self._logger.debug("Matching project by name")
-                for p in map(Project.model_validate, r.json()['projects']):
+                for p in map(Project.model_validate, r.json()["projects"]):
                     if p.name == name_or_id:
                         p._api = self
                         await p._refresh()
@@ -433,6 +433,25 @@ class Branch(APIModel):
 
     search = sync_method(search_async)
 
+    async def _poll(
+        self, request_id: str, interval: float = 3.0, timeout: Optional[float] = None
+    ) -> Any:
+        start = asyncio.get_event_loop().time()
+
+        while True:
+            async with self._api.client() as client:
+                r = await client.get(
+                    f"{self._api_prefix()}/response/{request_id}",
+                )
+                if r.status_code == 200:
+                    return r.json()
+                if (
+                    timeout is not None
+                    and asyncio.get_event_loop().time() - start > timeout
+                ):
+                    raise TimeoutError("Request timed out")
+                await asyncio.sleep(interval)
+
     async def generate_async(
         self,
         message: str,
@@ -466,6 +485,10 @@ class Branch(APIModel):
             )
             r.raise_for_status()
             j = r.json()
+
+            if "request_id" in j:
+                j = await self._poll(j["request_id"])
+
             if j["partial"]:
                 self._logger.warning(
                     f"Potentially incomplete generation due to {j['error']}"
@@ -510,7 +533,12 @@ class Branch(APIModel):
                 timeout=None,
             )
             r.raise_for_status()
-            return V1ReviewResult.model_validate(r.json())
+            j = r.json()
+
+            if "request_id" in j:
+                j = await self._poll(j["request_id"])
+
+            return V1ReviewResult.model_validate(j)
 
     review_changes = sync_method(review_changes_async)
 
@@ -528,7 +556,12 @@ class Branch(APIModel):
                 timeout=None,
             )
             r.raise_for_status()
-            return V1ScanResult.model_validate(r.json())
+            j = r.json()
+
+            if "request_id" in j:
+                j = await self._poll(j["request_id"])
+
+            return V1ScanResult.model_validate(j)
 
     scan = sync_method(scan_async)
 

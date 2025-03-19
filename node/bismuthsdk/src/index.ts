@@ -74,6 +74,27 @@ export interface V1ReviewResult {
   bugs: V1ReviewBug[];
 }
 
+export interface V1ScanCommit {
+  message: string;
+  diff: string;
+}
+
+export interface V1ScanChangeset {
+  title: string;
+  body: string;
+  commits: V1ScanCommit[];
+}
+
+export interface V1ScanSubsystem {
+  name: string;
+  files: string[];
+}
+
+export interface V1ScanResult {
+  scanned_subsystems: V1ScanSubsystem[];
+  changesets: V1ScanChangeset[];
+}
+
 /**
  * A location in a file
  */
@@ -142,6 +163,37 @@ export class Branch extends APIModel {
   }
 
   /**
+   * Poll for the completion of an asynchronous request
+   */
+  private async _poll(
+    requestId: string,
+    interval: number = 3000,
+    timeout?: number
+  ): Promise<any> {
+    const start = Date.now();
+
+    while (true) {
+      try {
+        const response = await this.api.client.get(
+          `${this.apiPrefix()}/response/${requestId}`
+        );
+        if (response.status === 200) {
+          return response.data;
+        }
+      } catch (error) {
+        // Continue polling on error
+      }
+
+      if (timeout !== undefined && Date.now() - start > timeout) {
+        throw new Error("Request timed out");
+      }
+
+      // Wait before polling again
+      await new Promise((resolve) => setTimeout(resolve, interval));
+    }
+  }
+
+  /**
    * Run the Bismuth agent on the given message
    */
   async generate(
@@ -169,13 +221,17 @@ export class Branch extends APIModel {
       }
     );
 
-    if (response.data.partial) {
-      console.warn(
-        `Potentially incomplete generation due to ${response.data.error}`
-      );
+    let data = response.data;
+
+    if ("request_id" in data) {
+      data = await this._poll(data.request_id);
     }
 
-    return response.data.diff;
+    if (data.partial) {
+      console.warn(`Potentially incomplete generation due to ${data.error}`);
+    }
+
+    return data.diff;
   }
 
   /**
@@ -215,7 +271,37 @@ export class Branch extends APIModel {
       }
     );
 
-    return response.data;
+    let data = response.data;
+
+    if ("request_id" in data) {
+      data = await this._poll(data.request_id);
+    }
+
+    return data;
+  }
+
+  /**
+   * Scan the project for bugs, covering at most max_subsystems subsystems.
+   * Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
+   */
+  async scan(maxSubsystems: number = 5): Promise<V1ScanResult> {
+    const response = await this.api.client.post(
+      `${this.apiPrefix()}/scan`,
+      {
+        max_subsystems: maxSubsystems,
+      },
+      {
+        timeout: 0,
+      }
+    );
+
+    let data = response.data;
+
+    if ("request_id" in data) {
+      data = await this._poll(data.request_id);
+    }
+
+    return data;
   }
 }
 

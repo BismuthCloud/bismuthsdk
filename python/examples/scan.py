@@ -20,7 +20,7 @@ if __name__ == "__main__":
     #     pass
     project = api.load_project(repo_dir)
     branch = project.get_branch(repo.active_branch.name)
-    res = branch.scan(max_subsystems=1)
+    res = branch.scan(max_subsystems=20)
 
     print("Scanned subsystems:", ",".join(sub.name for sub in res.scanned_subsystems))
     print("Changesets:")

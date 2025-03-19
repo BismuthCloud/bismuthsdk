@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+import shutil
 import subprocess
 from bismuthsdk import BismuthClient, Location, apply_diff
 
@@ -10,14 +11,21 @@ if __name__ == "__main__":
     logging.getLogger("git").setLevel(logging.DEBUG)
 
     example_dir = pathlib.Path("/tmp/bismuthsdk_example")
-    if not example_dir.exists():
-        example_dir.mkdir()
-        subprocess.run(["git", "init"], cwd=example_dir)
-        (example_dir / "test.py").write_text("print('Hello, world!')\n")
-        subprocess.run(["git", "add", "."], cwd=example_dir)
-        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=example_dir)
+    try:
+        shutil.rmtree(example_dir)
+    except:
+        pass
+    example_dir.mkdir()
+    subprocess.run(["git", "init"], cwd=example_dir)
+    (example_dir / "test.py").write_text("print('Hello, world!')\n")
+    subprocess.run(["git", "add", "."], cwd=example_dir)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=example_dir)
 
     api = BismuthClient(api_key=os.environ["BISMUTH_API_KEY"])
+    try:
+        api.get_project(example_dir.name).delete()
+    except:
+        pass
     project = api.load_project(example_dir)
     branch = project.get_branch("main")
 
