@@ -493,7 +493,7 @@ class Branch(APIModel):
                 self._logger.warning(
                     f"Potentially incomplete generation due to {j['error']}"
                 )
-            return r.json()["diff"]
+            return j["diff"]
 
     generate = sync_method(generate_async)
 
