@@ -96,6 +96,14 @@ export interface V1ScanResult {
 }
 
 /**
+ * Response to an asynchronous request.
+ * Pass this to poll() to get the final result.
+ */
+export interface V1AsyncResponse {
+  request_id: string;
+}
+
+/**
  * A location in a file
  */
 export class Location {
@@ -163,22 +171,27 @@ export class Branch extends APIModel {
   }
 
   /**
-   * Poll for the completion of an asynchronous request
+   * Poll for the result of an asynchronous request, returning the result.
+   *
+   * @param asyncResponse The response from a start_* method
+   * @param interval Polling interval in milliseconds (default: 3000ms)
+   * @param timeout Optional timeout in milliseconds
+   * @returns The result of the async operation
    */
-  private async _poll(
-    requestId: string,
+  async poll<T>(
+    asyncResponse: V1AsyncResponse,
     interval: number = 3000,
     timeout?: number
-  ): Promise<any> {
+  ): Promise<T> {
     const start = Date.now();
 
     while (true) {
       try {
         const response = await this.api.client.get(
-          `${this.apiPrefix()}/response/${requestId}`
+          `${this.apiPrefix()}/response/${asyncResponse.request_id}`
         );
         if (response.status === 200) {
-          return response.data;
+          return response.data as T;
         }
       } catch (error) {
         // Continue polling on error
@@ -194,16 +207,19 @@ export class Branch extends APIModel {
   }
 
   /**
-   * Run the Bismuth agent on the given message
+   * Run the Bismuth agent on the given message, applying localChanges to the repo before processing,
+   * and seeding the agent with the given startLocations.
+   *
+   * Returns the request ID to poll for the result.
    */
-  async generate(
+  async startGenerate(
     message: string,
     options: {
       localChanges?: Record<string, string>;
       startLocations?: Location[];
       session?: string;
     } = {}
-  ): Promise<string> {
+  ): Promise<V1AsyncResponse> {
     const { localChanges = {}, startLocations, session } = options;
 
     const response = await this.api.client.post(
@@ -221,11 +237,29 @@ export class Branch extends APIModel {
       }
     );
 
-    let data = response.data;
+    return response.data;
+  }
 
-    if ("request_id" in data) {
-      data = await this._poll(data.request_id);
-    }
+  /**
+   * Run the Bismuth agent on the given message, applying localChanges to the repo before processing,
+   * and seeding the agent with the given startLocations.
+   *
+   * If startLocations is not provided, the agent will attempt to find relevant locations in the codebase.
+   * If session is provided, the agent will create or continue from the previous session with the same name.
+   *
+   * Returns a unified diff that can be applied to the repo with applyDiff()
+   */
+  async generate(
+    message: string,
+    options: {
+      localChanges?: Record<string, string>;
+      startLocations?: Location[];
+      session?: string;
+    } = {}
+  ): Promise<string> {
+    const asyncResponse = await this.startGenerate(message, options);
+
+    const data = await this.poll<any>(asyncResponse);
 
     if (data.partial) {
       console.warn(`Potentially incomplete generation due to ${data.error}`);
@@ -254,12 +288,14 @@ export class Branch extends APIModel {
   /**
    * Review changes in the given files (compared to HEAD) for bugs.
    * message is a commit message or similar "intent" of the changes.
-   * changed_files is a dict of file paths to their new content.
+   * changedFiles is a dict of file paths to their new content.
+   *
+   * Returns the request ID to poll for the result.
    */
-  async reviewChanges(
+  async startReviewChanges(
     message: string,
     changedFiles: Record<string, string>
-  ): Promise<V1ReviewResult> {
+  ): Promise<V1AsyncResponse> {
     const response = await this.api.client.post(
       `${this.apiPrefix()}/review`,
       {
@@ -271,20 +307,30 @@ export class Branch extends APIModel {
       }
     );
 
-    let data = response.data;
-
-    if ("request_id" in data) {
-      data = await this._poll(data.request_id);
-    }
-
-    return data;
+    return response.data;
   }
 
   /**
-   * Scan the project for bugs, covering at most max_subsystems subsystems.
-   * Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
+   * Review changes in the given files (compared to HEAD) for bugs.
+   * message is a commit message or similar "intent" of the changes.
+   * changedFiles is a dict of file paths to their new content.
    */
-  async scan(maxSubsystems: number = 5): Promise<V1ScanResult> {
+  async reviewChanges(
+    message: string,
+    changedFiles: Record<string, string>
+  ): Promise<V1ReviewResult> {
+    const asyncResponse = await this.startReviewChanges(message, changedFiles);
+
+    return await this.poll<V1ReviewResult>(asyncResponse);
+  }
+
+  /**
+   * Scan the project for bugs, covering at most maxSubsystems subsystems.
+   * Subsystems are dynamically determined by the agent, and up to maxSubsystems are randomly selected to be scanned.
+   *
+   * Returns the request ID to poll for the result.
+   */
+  async startScan(maxSubsystems: number = 5): Promise<V1AsyncResponse> {
     const response = await this.api.client.post(
       `${this.apiPrefix()}/scan`,
       {
@@ -295,13 +341,17 @@ export class Branch extends APIModel {
       }
     );
 
-    let data = response.data;
+    return response.data;
+  }
 
-    if ("request_id" in data) {
-      data = await this._poll(data.request_id);
-    }
+  /**
+   * Scan the project for bugs, covering at most maxSubsystems subsystems.
+   * Subsystems are dynamically determined by the agent, and up to maxSubsystems are randomly selected to be scanned.
+   */
+  async scan(maxSubsystems: number = 5): Promise<V1ScanResult> {
+    const asyncResponse = await this.startScan(maxSubsystems);
 
-    return data;
+    return await this.poll<V1ScanResult>(asyncResponse);
   }
 }
 

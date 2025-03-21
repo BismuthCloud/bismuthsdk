@@ -2,7 +2,7 @@ from functools import wraps
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from pydantic.alias_generators import to_camel
-from typing import Any, Union, Optional
+from typing import Any, Type, TypeVar, Union, Optional, cast
 import asyncio
 import git
 import logging
@@ -410,6 +410,18 @@ class V1ScanResult(BaseModel):
     changesets: list[V1ScanChangeset]
 
 
+class V1AsyncResponse(BaseModel):
+    """
+    Response to an asynchronous request.
+    Pass this to poll() to get the final result.
+    """
+
+    request_id: str
+
+
+T = TypeVar("T", bound=Union[dict, BaseModel])
+
+
 class Branch(APIModel):
     _api: BismuthClient
     id: int
@@ -433,18 +445,28 @@ class Branch(APIModel):
 
     search = sync_method(search_async)
 
-    async def _poll(
-        self, request_id: str, interval: float = 3.0, timeout: Optional[float] = None
-    ) -> Any:
+    async def poll(
+        self,
+        async_response: V1AsyncResponse,
+        out_type: Type[T],
+        interval: float = 3.0,
+        timeout: Optional[float] = None,
+    ) -> T:
+        """
+        Poll for the result of an asynchronous request, returning the result as the given type.
+        """
         start = asyncio.get_event_loop().time()
 
         while True:
             async with self._api.client() as client:
                 r = await client.get(
-                    f"{self._api_prefix()}/response/{request_id}",
+                    f"{self._api_prefix()}/response/{async_response.request_id}",
                 )
                 if r.status_code == 200:
-                    return r.json()
+                    if issubclass(out_type, BaseModel):
+                        return cast(T, out_type.model_validate(r.json()))
+                    else:
+                        return r.json()
                 if (
                     timeout is not None
                     and asyncio.get_event_loop().time() - start > timeout
@@ -452,13 +474,13 @@ class Branch(APIModel):
                     raise TimeoutError("Request timed out")
                 await asyncio.sleep(interval)
 
-    async def generate_async(
+    async def start_generate_async(
         self,
         message: str,
         local_changes: dict[str, str] = {},
         start_locations: Optional[list[Location]] = None,
         session: Optional[str] = None,
-    ) -> str:
+    ) -> V1AsyncResponse:
         """
         Run the Bismuth agent on the given message, applying local_changes (file path -> content) to the repo before processing,
         and seeding the agent with the given start locations.
@@ -466,7 +488,7 @@ class Branch(APIModel):
         If start_locations is not provided, the agent will attempt to find relevant locations in the codebase.
         If session is provided, the agent will create or continue from the previous session with the same name.
 
-        Returns a unified diff that can be applied to the repo with apply_diff()
+        Returns the request ID to poll for the result.
         """
         async with self._api.client() as client:
             r = await client.post(
@@ -484,16 +506,33 @@ class Branch(APIModel):
                 timeout=None,
             )
             r.raise_for_status()
-            j = r.json()
+            return V1AsyncResponse.model_validate(r.json())
 
-            if "request_id" in j:
-                j = await self._poll(j["request_id"])
+    async def generate_async(
+        self,
+        message: str,
+        local_changes: dict[str, str] = {},
+        start_locations: Optional[list[Location]] = None,
+        session: Optional[str] = None,
+    ) -> str:
+        """
+        Run the Bismuth agent on the given message, applying local_changes (file path -> content) to the repo before processing,
+        and seeding the agent with the given start locations.
 
-            if j["partial"]:
-                self._logger.warning(
-                    f"Potentially incomplete generation due to {j['error']}"
-                )
-            return j["diff"]
+        If start_locations is not provided, the agent will attempt to find relevant locations in the codebase.
+        If session is provided, the agent will create or continue from the previous session with the same name.
+
+        Returns a unified diff that can be applied to the repo with apply_diff()
+        """
+        ar = await self.start_generate_async(
+            message, local_changes, start_locations, session
+        )
+        j = await self.poll(ar, dict)
+        if j["partial"]:
+            self._logger.warning(
+                f"Potentially incomplete generation due to {j['error']}"
+            )
+        return j["diff"]
 
     generate = sync_method(generate_async)
 
@@ -515,13 +554,15 @@ class Branch(APIModel):
 
     summarize_changes = sync_method(summarize_changes_async)
 
-    async def review_changes_async(
+    async def start_review_changes_async(
         self, message: str, changed_files: dict[str, str]
-    ) -> V1ReviewResult:
+    ) -> V1AsyncResponse:
         """
         Review changes in the given files (compared to HEAD) for bugs.
         message is a commit message or similar "intent" of the changes.
         changed_files is a dict of file paths to their new content.
+
+        Returns the request ID to poll for the result.
         """
         async with self._api.client() as client:
             r = await client.post(
@@ -533,19 +574,29 @@ class Branch(APIModel):
                 timeout=None,
             )
             r.raise_for_status()
-            j = r.json()
+            return V1AsyncResponse.model_validate(r.json())
 
-            if "request_id" in j:
-                j = await self._poll(j["request_id"])
+    start_review_changes = sync_method(start_review_changes_async)
 
-            return V1ReviewResult.model_validate(j)
+    async def review_changes_async(
+        self, message: str, changed_files: dict[str, str]
+    ) -> V1ReviewResult:
+        """
+        Review changes in the given files (compared to HEAD) for bugs.
+        message is a commit message or similar "intent" of the changes.
+        changed_files is a dict of file paths to their new content.
+        """
+        ar = await self.start_review_changes_async(message, changed_files)
+        return await self.poll(ar, V1ReviewResult)
 
     review_changes = sync_method(review_changes_async)
 
-    async def scan_async(self, max_subsystems: int = 5) -> V1ScanResult:
+    async def start_scan_async(self, max_subsystems: int = 5) -> V1AsyncResponse:
         """
         Scan the project for bugs, covering at most max_subsystems subsystems.
         Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
+
+        Returns the request ID to poll for the result.
         """
         async with self._api.client() as client:
             r = await client.post(
@@ -556,12 +607,17 @@ class Branch(APIModel):
                 timeout=None,
             )
             r.raise_for_status()
-            j = r.json()
+            return V1AsyncResponse.model_validate(r.json())
 
-            if "request_id" in j:
-                j = await self._poll(j["request_id"])
+    start_scan = sync_method(start_scan_async)
 
-            return V1ScanResult.model_validate(j)
+    async def scan_async(self, max_subsystems: int = 5) -> V1ScanResult:
+        """
+        Scan the project for bugs, covering at most max_subsystems subsystems.
+        Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
+        """
+        ar = await self.start_scan_async(max_subsystems)
+        return await self.poll(ar, V1ScanResult)
 
     scan = sync_method(scan_async)
 
