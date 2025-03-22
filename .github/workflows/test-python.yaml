@@ -55,9 +55,14 @@ jobs:
         run: |
           hatch -e hatch-test.py3.10 coverage html
 
+      - name: Zip HTML coverage report
+        if: always()
+        run: |
+          tar -czf python/htmlcov.tar.gz python/htmlcov
+
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: html-report
-          path: python/htmlcov
+          path: python/htmlcov.tar.gz
