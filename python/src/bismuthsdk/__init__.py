@@ -164,6 +164,7 @@ class BismuthClient:
                 r.raise_for_status()
                 p = Project.model_validate(r.json())
                 p._api = self
+                await p._refresh()
                 return p
             else:
                 raise ValueError(

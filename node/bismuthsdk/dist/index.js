@@ -133,9 +133,39 @@ class Branch extends APIModel {
         }));
     }
     /**
-     * Run the Bismuth agent on the given message
+     * Poll for the result of an asynchronous request, returning the result.
+     *
+     * @param asyncResponse The response from a start_* method
+     * @param interval Polling interval in milliseconds (default: 3000ms)
+     * @param timeout Optional timeout in milliseconds
+     * @returns The result of the async operation
      */
-    async generate(message, options = {}) {
+    async poll(asyncResponse, interval = 3000, timeout) {
+        const start = Date.now();
+        while (true) {
+            try {
+                const response = await this.api.client.get(`${this.apiPrefix()}/response/${asyncResponse.request_id}`);
+                if (response.status === 200) {
+                    return response.data;
+                }
+            }
+            catch (error) {
+                // Continue polling on error
+            }
+            if (timeout !== undefined && Date.now() - start > timeout) {
+                throw new Error("Request timed out");
+            }
+            // Wait before polling again
+            await new Promise((resolve) => setTimeout(resolve, interval));
+        }
+    }
+    /**
+     * Run the Bismuth agent on the given message, applying localChanges to the repo before processing,
+     * and seeding the agent with the given startLocations.
+     *
+     * Returns the request ID to poll for the result.
+     */
+    async startGenerate(message, options = {}) {
         const { localChanges = {}, startLocations, session } = options;
         const response = await this.api.client.post(`${this.apiPrefix()}/generate`, {
             message,
@@ -147,10 +177,24 @@ class Branch extends APIModel {
         }, {
             timeout: 0, // No timeout
         });
-        if (response.data.partial) {
-            console.warn(`Potentially incomplete generation due to ${response.data.error}`);
+        return response.data;
+    }
+    /**
+     * Run the Bismuth agent on the given message, applying localChanges to the repo before processing,
+     * and seeding the agent with the given startLocations.
+     *
+     * If startLocations is not provided, the agent will attempt to find relevant locations in the codebase.
+     * If session is provided, the agent will create or continue from the previous session with the same name.
+     *
+     * Returns a unified diff that can be applied to the repo with applyDiff()
+     */
+    async generate(message, options = {}) {
+        const asyncResponse = await this.startGenerate(message, options);
+        const data = await this.poll(asyncResponse);
+        if (data.partial) {
+            console.warn(`Potentially incomplete generation due to ${data.error}`);
         }
-        return response.data.diff;
+        return data.diff;
     }
     /**
      * Summarize the changes in the given unified diff
@@ -162,6 +206,53 @@ class Branch extends APIModel {
             timeout: 0,
         });
         return response.data.message;
+    }
+    /**
+     * Review changes in the given files (compared to HEAD) for bugs.
+     * message is a commit message or similar "intent" of the changes.
+     * changedFiles is a dict of file paths to their new content.
+     *
+     * Returns the request ID to poll for the result.
+     */
+    async startReviewChanges(message, changedFiles) {
+        const response = await this.api.client.post(`${this.apiPrefix()}/review`, {
+            message,
+            changes: changedFiles,
+        }, {
+            timeout: 0,
+        });
+        return response.data;
+    }
+    /**
+     * Review changes in the given files (compared to HEAD) for bugs.
+     * message is a commit message or similar "intent" of the changes.
+     * changedFiles is a dict of file paths to their new content.
+     */
+    async reviewChanges(message, changedFiles) {
+        const asyncResponse = await this.startReviewChanges(message, changedFiles);
+        return await this.poll(asyncResponse);
+    }
+    /**
+     * Scan the project for bugs, covering at most maxSubsystems subsystems.
+     * Subsystems are dynamically determined by the agent, and up to maxSubsystems are randomly selected to be scanned.
+     *
+     * Returns the request ID to poll for the result.
+     */
+    async startScan(maxSubsystems = 5) {
+        const response = await this.api.client.post(`${this.apiPrefix()}/scan`, {
+            max_subsystems: maxSubsystems,
+        }, {
+            timeout: 0,
+        });
+        return response.data;
+    }
+    /**
+     * Scan the project for bugs, covering at most maxSubsystems subsystems.
+     * Subsystems are dynamically determined by the agent, and up to maxSubsystems are randomly selected to be scanned.
+     */
+    async scan(maxSubsystems = 5) {
+        const asyncResponse = await this.startScan(maxSubsystems);
+        return await this.poll(asyncResponse);
     }
 }
 exports.Branch = Branch;
@@ -246,6 +337,12 @@ class Project extends APIModel {
         }
     }
     /**
+     * Delete the project
+     */
+    async delete() {
+        await this.api.client.delete(this.apiPrefix());
+    }
+    /**
      * Get a branch by name
      */
     getBranch(branchName) {
@@ -309,7 +406,7 @@ class BismuthClient {
         const organization = await this.getOrganization();
         if (typeof nameOrId === "string") {
             const response = await this.client.get(`${organization.apiPrefix()}/projects/list`);
-            for (const project of response.data) {
+            for (const project of response.data.projects) {
                 if (project.name === nameOrId) {
                     return new Project(project, this);
                 }

@@ -36,12 +36,20 @@ Source = "https://github.com/BismuthCloud/bismuthsdk"
 [tool.hatch.version]
 path = "src/bismuthsdk/__about__.py"
 
+[tool.hatch.envs.hatch-test]
+extra-dependencies = [
+  "pytest-asyncio==0.24.0",
+  "pytest-cov==6.0.0",
+  "wiremock[testing]==2.6.1",
+  "requests==2.31.0", # https://github.com/docker/docker-py/issues/3256
+]
+
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/bismuthsdk tests}"
+check = "mypy --install-types --non-interactive {args:src/bismuthsdk}"
 
 [tool.coverage.run]
 source_pkgs = ["bismuthsdk", "tests"]
