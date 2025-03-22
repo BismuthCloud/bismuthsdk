@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: node
+        working-directory: node/bismuthsdk
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
