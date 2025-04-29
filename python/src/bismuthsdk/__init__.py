@@ -55,6 +55,19 @@ def memoize(func):
     return memoized_sync_func
 
 
+async def raise_for_status(r: httpx.Response):
+    if not r.is_success:
+        try:
+            j = r.json()
+        except:
+            r.raise_for_status()
+            return
+
+        raise httpx.HTTPStatusError(
+            f"{r.status_code}: {j['detail']}", request=r.request, response=r
+        )
+
+
 class APIModel(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -117,7 +130,7 @@ class BismuthClient:
         self._logger.debug("Listing organizations")
         async with self.client() as client:
             r = await client.get("/organizations")
-            r.raise_for_status()
+            await raise_for_status(r)
             return [Organization.model_validate(o) for o in r.json()]
 
     list_organizations = sync_method(list_organizations_async)
@@ -135,7 +148,7 @@ class BismuthClient:
             self._organization_id = organizations[0].id
         async with self.client() as client:
             r = await client.get(f"/organizations/{self._organization_id}")
-            r.raise_for_status()
+            await raise_for_status(r)
             org = Organization.model_validate(r.json())
             self.organization = org
             return org
@@ -149,7 +162,7 @@ class BismuthClient:
         async with self.client() as client:
             if isinstance(name_or_id, str):
                 r = await client.get(f"{organization._api_prefix()}/projects/list")
-                r.raise_for_status()
+                await raise_for_status(r)
                 self._logger.debug("Matching project by name")
                 for p in map(Project.model_validate, r.json()["projects"]):
                     if p.name == name_or_id:
@@ -161,7 +174,7 @@ class BismuthClient:
                 r = await client.get(
                     f"{organization._api_prefix()}/projects/{name_or_id}"
                 )
-                r.raise_for_status()
+                await raise_for_status(r)
                 p = Project.model_validate(r.json())
                 p._api = self
                 await p._refresh()
@@ -201,7 +214,7 @@ class BismuthClient:
                     f"{organization._api_prefix()}/projects",
                     json={"name": repo.name},
                 )
-                r.raise_for_status()
+                await raise_for_status(r)
                 p = Project.model_validate(r.json())
                 p._api = self
                 await p.synchronize_git_local_async(repo)
@@ -209,7 +222,7 @@ class BismuthClient:
             else:
                 clone_token = urllib.parse.urlparse(bismuth_remote.url).password
                 r = await client.get(f"{organization._api_prefix()}/projects/list")
-                r.raise_for_status()
+                await raise_for_status(r)
                 self._logger.debug("Matching project by clone token")
                 for p in map(Project.model_validate, r.json()["projects"]):
                     if p.clone_token == clone_token:
@@ -244,7 +257,7 @@ class Project(APIModel):
         self._logger.debug("Refreshing project branches")
         async with self._api.client() as client:
             r = await client.get(self._api_prefix())
-            r.raise_for_status()
+            await raise_for_status(r)
             new = Project.model_validate(r.json())
             self.branches = new.branches
             for b in self.branches:
@@ -310,7 +323,7 @@ class Project(APIModel):
         """
         async with self._api.client() as client:
             r = await client.delete(self._api_prefix())
-            r.raise_for_status()
+            await raise_for_status(r)
 
     delete = sync_method(delete_async)
 
@@ -441,7 +454,7 @@ class Branch(APIModel):
                 f"{self._api_prefix()}/search",
                 params={"query": query, "top": top},
             )
-            r.raise_for_status()
+            await raise_for_status(r)
             return [V1SearchResult.model_validate(l) for l in r.json()]
 
     search = sync_method(search_async)
@@ -462,6 +475,7 @@ class Branch(APIModel):
             async with self._api.client() as client:
                 r = await client.get(
                     f"{self._api_prefix()}/response/{async_response.request_id}",
+                    timeout=None,
                 )
                 if r.status_code == 200:
                     if issubclass(out_type, BaseModel):
@@ -506,7 +520,7 @@ class Branch(APIModel):
                 },
                 timeout=None,
             )
-            r.raise_for_status()
+            await raise_for_status(r)
             return V1AsyncResponse.model_validate(r.json())
 
     async def generate_async(
@@ -550,7 +564,7 @@ class Branch(APIModel):
                 },
                 timeout=None,
             )
-            r.raise_for_status()
+            await raise_for_status(r)
             return r.json()["message"]
 
     summarize_changes = sync_method(summarize_changes_async)
@@ -574,7 +588,7 @@ class Branch(APIModel):
                 },
                 timeout=None,
             )
-            r.raise_for_status()
+            await raise_for_status(r)
             return V1AsyncResponse.model_validate(r.json())
 
     start_review_changes = sync_method(start_review_changes_async)
@@ -592,7 +606,9 @@ class Branch(APIModel):
 
     review_changes = sync_method(review_changes_async)
 
-    async def start_scan_async(self, max_subsystems: int = 5) -> V1AsyncResponse:
+    async def start_scan_async(
+        self, max_subsystems: int = 5, only_containing: Optional[list[str]] = None
+    ) -> V1AsyncResponse:
         """
         Scan the project for bugs, covering at most max_subsystems subsystems.
         Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
@@ -604,20 +620,25 @@ class Branch(APIModel):
                 f"{self._api_prefix()}/scan",
                 json={
                     "max_subsystems": max_subsystems,
+                    "only_containing": only_containing,
                 },
                 timeout=None,
             )
-            r.raise_for_status()
+            await raise_for_status(r)
             return V1AsyncResponse.model_validate(r.json())
 
     start_scan = sync_method(start_scan_async)
 
-    async def scan_async(self, max_subsystems: int = 5) -> V1ScanResult:
+    async def scan_async(
+        self, max_subsystems: int = 5, only_containing: Optional[list[str]] = None
+    ) -> V1ScanResult:
         """
         Scan the project for bugs, covering at most max_subsystems subsystems.
         Subsystems are dynamically determined by the agent, and up to max_subsystems are randomly selected to be scanned.
         """
-        ar = await self.start_scan_async(max_subsystems)
+        ar = await self.start_scan_async(
+            max_subsystems, only_containing=only_containing
+        )
         return await self.poll(ar, V1ScanResult)
 
     scan = sync_method(scan_async)

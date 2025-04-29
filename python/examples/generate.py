@@ -17,7 +17,7 @@ if __name__ == "__main__":
         pass
     example_dir.mkdir()
     subprocess.run(["git", "init"], cwd=example_dir)
-    (example_dir / "test.py").write_text("print('Hello, world!')\n")
+    (example_dir / "test.py").write_text("print('Hello †!')\n")
     subprocess.run(["git", "add", "."], cwd=example_dir)
     subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=example_dir)
 
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     Returns a unified diff that can be applied to the repo.
     """
     diff = branch.generate(
-        "change test.py to say goodbye world",
+        "change test.py to say 'goodbye †'",
         local_changes={},
         start_locations=None,
         session=None,
