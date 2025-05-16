@@ -120,6 +120,7 @@ class BismuthClient:
             base_url=self.base_url,
             auth=httpx.BasicAuth("", self.api_key),
             headers=self._headers,
+            timeout=None,
         )
 
     @memoize
