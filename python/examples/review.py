@@ -12,10 +12,10 @@ if __name__ == "__main__":
     repo_dir = pathlib.Path(sys.argv[1])
 
     api = BismuthClient(api_key=os.environ["BISMUTH_API_KEY"])
-    try:
-        api.get_project(repo_dir.name).delete()
-    except:
-        pass
+    # try:
+    #     api.get_project(repo_dir.name).delete()
+    # except:
+    #     pass
     project = api.load_project(repo_dir)
     branch = project.get_branch("main")
 

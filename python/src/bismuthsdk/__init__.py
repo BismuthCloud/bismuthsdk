@@ -224,7 +224,7 @@ class BismuthClient:
                 r = await client.get(f"{organization._api_prefix()}/projects/list")
                 await raise_for_status(r)
                 self._logger.debug("Matching project by clone token")
-                for p in map(Project.model_validate, r.json()["projects"]):
+                for p in map(Project.model_validate, r.json()):
                     if p.clone_token == clone_token:
                         p._api = self
                         await p._refresh()
@@ -246,9 +246,7 @@ class Project(APIModel):
     name: str
     hash: str
     branches: list["Branch"] = Field(alias="features")
-    clone_token: str
-    github_repo: Optional[str]
-    github_app_install: Optional[GitHubAppInstall]
+    clone_token: str = Field(alias="clone_token")
 
     def _api_prefix(self) -> str:
         return f"{self._api.organization._api_prefix()}/projects/{self.id}"
@@ -268,9 +266,6 @@ class Project(APIModel):
         """
         Synchronize the repository stored by Bismuth with the given local repo.
         """
-        if self.github_app_install is not None:
-            raise ValueError("Cannot synchronize a project linked to GitHub repo")
-
         if not (repo / ".git").exists():
             raise ValueError(f"{repo} is not a git repository")
         g = git.Repo(repo)
