@@ -120,6 +120,7 @@ class BismuthClient:
             base_url=self.base_url,
             auth=httpx.BasicAuth("", self.api_key),
             headers=self._headers,
+            timeout=None,
         )
 
     @memoize
@@ -211,7 +212,7 @@ class BismuthClient:
                     raise ValueError("No Bismuth remote found")
                 self._logger.info("Creating project")
                 r = await client.post(
-                    f"{organization._api_prefix()}/projects",
+                    f"{organization._api_prefix()}/projects/init",
                     json={"name": repo.name},
                 )
                 await raise_for_status(r)
